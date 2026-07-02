@@ -83,8 +83,33 @@
           ${activas.map(([id,r])=>`<button class="bigChoice" data-r="${id}">${r.titulo}</button>`).join('') || '<div class="empty">No hay ninguna encuesta abierta para tu grupo ahora mismo. Pregúntale a tu profesor/a.</div>'}
         </div>`;
         wrap.querySelectorAll('[data-r]').forEach(b=> b.onclick = ()=>{
-          sel.rondaId=b.dataset.r; sel.ronda = rondas[sel.rondaId]; step=3; renderStep(data);
+          sel.rondaId=b.dataset.r; sel.ronda = rondas[sel.rondaId];
+          const recordado = localStorage.getItem(`climaAula_${sel.curso}_${sel.grupo}`);
+          const alumnos = data[sel.curso].grupos[sel.grupo].alumnos || {};
+          if(recordado){
+            const ru = JSON.parse(recordado);
+            if(alumnos[ru.id] === ru.nombre){ sel.alumnoId = ru.id; sel.recordadoNombre = ru.nombre; step = 3.5; renderStep(data); return; }
+          }
+          step=3; renderStep(data);
         });
+      }
+      else if(step===3.5){
+        const ya = (sel.ronda.participantes)||{};
+        wrap.innerHTML = `<h1>Clima de Aula</h1><div class="subtitle">${sel.ronda.titulo}</div>${progreso()}
+        <div class="stepCard">
+          <label class="field">Este dispositivo está guardado como:</label>
+          <div style="font-family:'Fraunces',serif;font-size:1.3rem;margin:8px 0 18px;color:var(--azulejo-dark);">${sel.recordadoNombre} ${ya[sel.alumnoId]?' · ya respondida ✓':''}</div>
+          <button class="btnPrimary" style="width:100%;margin-top:0;" id="btnSoyYo">Sí, soy yo — continuar</button>
+          <button class="btnGhost" style="width:100%;margin-top:10px;" id="btnNoSoyYo">No soy yo, elegir otro nombre</button>
+        </div>`;
+        document.getElementById('btnSoyYo').onclick = ()=>{
+          db.ref(`cursos/${sel.curso}/grupos/${sel.grupo}/rondas/${sel.rondaId}/participantes/${sel.alumnoId}`).set(true);
+          step=4; renderStep(data);
+        };
+        document.getElementById('btnNoSoyYo').onclick = ()=>{
+          localStorage.removeItem(`climaAula_${sel.curso}_${sel.grupo}`);
+          step=3; renderStep(data);
+        };
       }
       else if(step===3){
         const alumnos = data[sel.curso].grupos[sel.grupo].alumnos || {};
@@ -96,6 +121,7 @@
         </div>`;
         wrap.querySelectorAll('[data-a]').forEach(b=> b.onclick = ()=>{
           sel.alumnoId=b.dataset.a;
+          localStorage.setItem(`climaAula_${sel.curso}_${sel.grupo}`, JSON.stringify({id:sel.alumnoId, nombre:alumnos[sel.alumnoId]}));
           db.ref(`cursos/${sel.curso}/grupos/${sel.grupo}/rondas/${sel.rondaId}/participantes/${sel.alumnoId}`).set(true);
           step=4; renderStep(data);
         });
@@ -307,7 +333,7 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
         <select class="formSel" id="selCompararCurso" style="max-width:220px;">
           <option value="">— ninguno —</option>
-          ${cursosList().filter(c=>c!==curso).map(c=>`<option value="${c}" ${c===comparar.curso?'selected':''}>${c}</option>`).join('')}
+          ${cursosList().map(c=>`<option value="${c}" ${c===comparar.curso?'selected':''}>${c}${c===curso?' (este curso)':''}</option>`).join('')}
         </select>
         <select class="formSel" id="selCompararGrupo" style="max-width:220px;"><option value="">grupo…</option></select>
         <button class="btnGhost" onclick="climaApp.quitarComparacion()">Quitar comparación</button>
@@ -358,10 +384,11 @@
     const sc = document.getElementById('selCompararCurso');
     if(!sc) return;
     const sg = document.getElementById('selCompararGrupo');
-    if(comparar.curso) sg.innerHTML = '<option value="">grupo…</option>' + gruposList(comparar.curso).map(g=>`<option value="${g}" ${g===comparar.grupo?'selected':''}>${data[comparar.curso].grupos[g].nombre}</option>`).join('');
+    function gruposDisponibles(c){ return gruposList(c).filter(g => !(c===curso && g===grupo)); }
+    if(comparar.curso) sg.innerHTML = '<option value="">grupo…</option>' + gruposDisponibles(comparar.curso).map(g=>`<option value="${g}" ${g===comparar.grupo?'selected':''}>${data[comparar.curso].grupos[g].nombre}</option>`).join('');
     sc.onchange = ()=>{
       comparar.curso = sc.value || null; comparar.grupo = null;
-      sg.innerHTML = '<option value="">grupo…</option>' + gruposList(comparar.curso).map(g=>`<option value="${g}">${data[comparar.curso].grupos[g].nombre}</option>`).join('');
+      sg.innerHTML = '<option value="">grupo…</option>' + gruposDisponibles(comparar.curso).map(g=>`<option value="${g}">${data[comparar.curso].grupos[g].nombre}</option>`).join('');
       drawChart();
     };
     sg.onchange = ()=>{ comparar.grupo = sg.value || null; drawChart(); };
